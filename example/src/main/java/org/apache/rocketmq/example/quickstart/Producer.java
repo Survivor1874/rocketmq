@@ -48,7 +48,9 @@ public class Producer {
         /*
          * Launch the instance.
          */
+        producer.setNamesrvAddr("localhost:9876");
         producer.start();
+        producer.setSendMsgTimeout(999999999);
 
         for (int i = 0; i < 1000; i++) {
             try {
@@ -66,7 +68,7 @@ public class Producer {
                  */
                 SendResult sendResult = producer.send(msg);
 
-                System.out.printf("%s%n", sendResult);
+                System.err.printf("%s%n", sendResult);
             } catch (Exception e) {
                 e.printStackTrace();
                 Thread.sleep(1000);

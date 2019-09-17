@@ -54,7 +54,6 @@ import static org.apache.rocketmq.client.trace.TraceConstants.TRACE_INSTANCE_NAM
 public class AsyncTraceDispatcher implements TraceDispatcher {
 
     private final static InternalLogger log = ClientLogger.getLog();
-    private final int queueSize;
     private final int batchSize;
     private final int maxMsgSize;
     private final DefaultMQProducer traceProducer;
@@ -76,7 +75,7 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
 
     public AsyncTraceDispatcher(String traceTopicName, RPCHook rpcHook) throws MQClientException {
         // queueSize is greater than or equal to the n power of 2 of value
-        this.queueSize = 2048;
+        int queueSize = 2048;
         this.batchSize = 100;
         this.maxMsgSize = 128000;
         this.discardCount = new AtomicLong(0L);
@@ -125,6 +124,7 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
         this.hostConsumer = hostConsumer;
     }
 
+    @Override
     public void start(String nameSrvAddr) throws MQClientException {
         if (isStarted.compareAndSet(false, true)) {
             traceProducer.setNamesrvAddr(nameSrvAddr);

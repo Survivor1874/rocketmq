@@ -354,6 +354,7 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
         return defaultMQPullConsumerImpl;
     }
 
+    @Override
     public boolean isUnitMode() {
         return unitMode;
     }

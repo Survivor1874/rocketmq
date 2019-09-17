@@ -21,6 +21,11 @@
 package org.apache.rocketmq.common.protocol.route;
 
 public class QueueData implements Comparable<QueueData> {
+
+    /**
+     * 这个 brokerName 并不真正是某个 Broker 的物理地址，
+     * 它对应的一组 Broker 节点，包括一个主节点和若干个从节点。
+     */
     private String brokerName;
     private int readQueueNums;
     private int writeQueueNums;
