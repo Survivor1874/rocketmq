@@ -95,20 +95,37 @@ public class ConsumerManager {
         }
     }
 
+    /**
+     * 此处broker会根据consumer发送的消息，获取自身记录的消费者订阅信息，这个逻辑是按照消费组为单位获取的
+     * @param group
+     * @param clientChannelInfo
+     * @param consumeType
+     * @param messageModel
+     * @param consumeFromWhere
+     * @param subList
+     * @param isNotifyConsumerIdsChangedEnable
+     * @return
+     */
     public boolean registerConsumer(final String group, final ClientChannelInfo clientChannelInfo,
         ConsumeType consumeType, MessageModel messageModel, ConsumeFromWhere consumeFromWhere,
         final Set<SubscriptionData> subList, boolean isNotifyConsumerIdsChangedEnable) {
 
+        // 获取消费者组信息
         ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(group);
+
+        // 不存在则根据心跳构造新的消费组信息
         if (null == consumerGroupInfo) {
             ConsumerGroupInfo tmp = new ConsumerGroupInfo(group, consumeType, messageModel, consumeFromWhere);
+
+            // 首次不存在订阅关系直接将订阅关系放置到订阅关系表。
             ConsumerGroupInfo prev = this.consumerTable.putIfAbsent(group, tmp);
             consumerGroupInfo = prev != null ? prev : tmp;
         }
 
-        boolean r1 =
-            consumerGroupInfo.updateChannel(clientChannelInfo, consumeType, messageModel,
-                consumeFromWhere);
+        // 更新ClientChannelInfo
+        boolean r1 = consumerGroupInfo.updateChannel(clientChannelInfo, consumeType, messageModel, consumeFromWhere);
+
+        // 更新订阅关系表
         boolean r2 = consumerGroupInfo.updateSubscription(subList);
 
         if (r1 || r2) {

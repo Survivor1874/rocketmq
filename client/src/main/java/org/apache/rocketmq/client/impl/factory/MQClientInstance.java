@@ -141,6 +141,7 @@ public class MQClientInstance {
 
         this.mQAdminImpl = new MQAdminImpl(this);
 
+        // 初始化消息拉取 service
         this.pullMessageService = new PullMessageService(this);
 
         this.rebalanceService = new RebalanceService(this);
@@ -235,7 +236,9 @@ public class MQClientInstance {
                     this.mQClientAPIImpl.start();
                     // Start various schedule tasks
                     this.startScheduledTask();
+
                     // Start pull service
+                    // 启动消息拉取线程
                     this.pullMessageService.start();
                     // Start rebalance service
                     this.rebalanceService.start();
@@ -283,6 +286,7 @@ public class MQClientInstance {
             }
         }, 10, this.clientConfig.getPollNameServerInterval(), TimeUnit.MILLISECONDS);
 
+        // 向定时任务调度线程池中提交了清理离线Broker、发送心跳包到所有broker这两个任务
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -451,6 +455,8 @@ public class MQClientInstance {
     public void sendHeartbeatToAllBrokerWithLock() {
         if (this.lockHeartbeat.tryLock()) {
             try {
+
+                // 发送心跳包
                 this.sendHeartbeatToAllBroker();
                 this.uploadFilterClassSource();
             } catch (final Exception e) {
@@ -512,10 +518,18 @@ public class MQClientInstance {
         return false;
     }
 
+    /**
+     * 向所有Broker发送心跳，心跳消息类型为是 HEART_BEAT 类型的消息，
+     * 这类消息在broker中使用 ClientManageProcessor 处理
+     */
     private void sendHeartbeatToAllBroker() {
+
+        // 构造前置心跳包
         final HeartbeatData heartbeatData = this.prepareHeartbeatData();
         final boolean producerEmpty = heartbeatData.getProducerDataSet().isEmpty();
         final boolean consumerEmpty = heartbeatData.getConsumerDataSet().isEmpty();
+
+        // 没有消费者或生产者
         if (producerEmpty && consumerEmpty) {
             log.warn("sending heartbeat, but no consumer and no producer");
             return;
@@ -534,11 +548,14 @@ public class MQClientInstance {
                         String addr = entry1.getValue();
                         if (addr != null) {
                             if (consumerEmpty) {
-                                if (id != MixAll.MASTER_ID)
+                                if (id != MixAll.MASTER_ID) {
                                     continue;
+                                }
                             }
 
                             try {
+
+                                // 真正发送心跳的逻辑
                                 int version = this.mQClientAPIImpl.sendHearbeat(addr, heartbeatData, 3000);
                                 if (!this.brokerVersionTable.containsKey(brokerName)) {
                                     this.brokerVersionTable.put(brokerName, new HashMap<String, Integer>(4));
@@ -1053,6 +1070,17 @@ public class MQClientInstance {
         return 0;
     }
 
+
+    /**
+     * 这里根据topic获取到broker地址，如果broker地址存在则获取消费者id列表。
+     * <p>
+     * 这里是根据consumerGroup组来进行选择的，如果同一个group订阅了两个以上topic或者多个tag，
+     * 则会把另外一个topic的消费者也取下来，导致Rebalance之后出现问题，这会导致每个topic下面的数据量少一半（如果是2个不同topic）
+     *
+     * @param topic
+     * @param group
+     * @return
+     */
     public List<String> findConsumerIdList(final String topic, final String group) {
         String brokerAddr = this.findBrokerAddrByTopic(topic);
         if (null == brokerAddr) {

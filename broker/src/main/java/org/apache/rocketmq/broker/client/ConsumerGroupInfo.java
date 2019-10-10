@@ -152,9 +152,16 @@ public class ConsumerGroupInfo {
     public boolean updateSubscription(final Set<SubscriptionData> subList) {
         boolean updated = false;
 
+        // 遍历订阅关系列表
         for (SubscriptionData sub : subList) {
             SubscriptionData old = this.subscriptionTable.get(sub.getTopic());
+
+            // 这里主要做订阅关系表更新逻辑，如果不存在订阅关系则直接更新；
+            // 如果存在则比较哪一个更新，最新的会覆盖老的那一个。
+            // 如果原先的订阅关系不存在
             if (old == null) {
+
+                // 更新本订阅关系
                 SubscriptionData prev = this.subscriptionTable.putIfAbsent(sub.getTopic(), sub);
                 if (null == prev) {
                     updated = true;
@@ -162,6 +169,11 @@ public class ConsumerGroupInfo {
                             this.groupName,
                             sub.toString());
                 }
+
+                // 如果当前的version大于原有version，则更新订阅关系
+                // version值为系统时间戳
+                // (SubscriptionData.java)
+                // private long subVersion = System.currentTimeMillis();
             } else if (sub.getSubVersion() > old.getSubVersion()) {
                 if (this.consumeType == ConsumeType.CONSUME_PASSIVELY) {
                     log.info("subscription changed, group: {} OLD: {} NEW: {}",
@@ -174,6 +186,18 @@ public class ConsumerGroupInfo {
                 this.subscriptionTable.put(sub.getTopic(), sub);
             }
         }
+
+
+        // 如果当前的订阅的topic与上次的topic不相等，则exist（topic存在标识）设置为true，
+        // 进入if代码块，执行remove操作，将老的topic删掉，后续的topic就覆盖了老的topic。
+
+        // consumerTable中存放按照消费者进行划分依据的消费者信息。
+        // 如果一个组的消费信息不一样，在上文举的例子中，
+        // 则订阅了topicA的消费者心跳信息首先通知broker自己组订阅了topicA/tagA，broker记录了该订阅关系并更新了本地的订阅关系表。
+        // 当另外的心跳发送过来，通知broker当前组订阅的是topicB/tagB，
+        // 后来的这一个的时间戳必然大于前一个，就会将前一个覆盖，导致订阅关系发生变化。
+        // 这样会导致了订阅消息相互覆盖，当拉取消息时，会存在一个消费者没法拉到消息，因为Broker上查询不到该订阅信息。
+        // 除了上述原因外，还有一个更为重要的原因在于消息的Rebalance过程。 看一下 RebalanceImpl.java#rebalanceByTopic
 
         Iterator<Entry<String, SubscriptionData>> it = this.subscriptionTable.entrySet().iterator();
         while (it.hasNext()) {

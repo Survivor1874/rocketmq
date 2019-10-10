@@ -270,13 +270,12 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      *
      * @param consumerGroup Consume queue.
      * @param rpcHook RPC hook to execute before each remoting command.
-     * @param allocateMessageQueueStrategy Message queue allocating algorithm.
+     * @param allocateMessageQueueStrategy Message queue allocating algorithm. （平均散列队列算法）
      */
-    public DefaultMQPushConsumer(final String consumerGroup, RPCHook rpcHook,
-        AllocateMessageQueueStrategy allocateMessageQueueStrategy) {
-        this.consumerGroup = consumerGroup;
-        this.allocateMessageQueueStrategy = allocateMessageQueueStrategy;
-        defaultMQPushConsumerImpl = new DefaultMQPushConsumerImpl(this, rpcHook);
+    public DefaultMQPushConsumer(final String consumerGroup, RPCHook rpcHook, AllocateMessageQueueStrategy allocateMessageQueueStrategy) {
+            this.consumerGroup = consumerGroup;
+            this.allocateMessageQueueStrategy = allocateMessageQueueStrategy;
+            defaultMQPushConsumerImpl = new DefaultMQPushConsumerImpl(this, rpcHook);
     }
 
     /**
@@ -578,7 +577,11 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      */
     @Override
     public void start() throws MQClientException {
+
+        // 启动消费客户端
         this.defaultMQPushConsumerImpl.start();
+
+        // trace处理逻辑
         if (null != traceDispatcher) {
             try {
                 traceDispatcher.start(this.getNamesrvAddr());
@@ -613,7 +616,11 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      */
     @Override
     public void registerMessageListener(MessageListenerConcurrently messageListener) {
+
+        // 将实现指向本类引用
         this.messageListener = messageListener;
+
+        // 进行真实注册
         this.defaultMQPushConsumerImpl.registerMessageListener(messageListener);
     }
 

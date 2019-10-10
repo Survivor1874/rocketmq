@@ -21,6 +21,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.common.ServiceThread;
@@ -32,17 +33,24 @@ public class PullMessageService extends ServiceThread {
     private final LinkedBlockingQueue<PullRequest> pullRequestQueue = new LinkedBlockingQueue<PullRequest>();
     private final MQClientInstance mQClientFactory;
     private final ScheduledExecutorService scheduledExecutorService = Executors
-        .newSingleThreadScheduledExecutor(new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-                return new Thread(r, "PullMessageServiceScheduledThread");
-            }
-        });
+            .newSingleThreadScheduledExecutor(new ThreadFactory() {
+                @Override
+                public Thread newThread(Runnable r) {
+                    return new Thread(r, "PullMessageServiceScheduledThread");
+                }
+            });
 
     public PullMessageService(MQClientInstance mQClientFactory) {
         this.mQClientFactory = mQClientFactory;
     }
 
+    /**
+     * PullMessageService 提供了 即时添加 与延时添加 两种方式添加PullRequest，将其加入到pullRequestQueue阻塞队列中。
+     * PullRequest 的创建过程是在 RebalanceImpl 中完成的，这个过程涉及到 RocketMQ 消息消费的重要过程 消息队列负载机制
+     *
+     * @param pullRequest
+     * @param timeDelay
+     */
     public void executePullRequestLater(final PullRequest pullRequest, final long timeDelay) {
         if (!isStopped()) {
             this.scheduledExecutorService.schedule(new Runnable() {
@@ -76,6 +84,13 @@ public class PullMessageService extends ServiceThread {
         return scheduledExecutorService;
     }
 
+    /**
+     * 首先从 MQClientInstance 中选择一个消费者，选取条件为当前拉取请求中的消费者组；
+     * 将该消费者实例强转为 DefaultMQPushConsumerImpl
+     * 调用 DefaultMQPushConsumerImpl 的 pullMessage 方法进行消息拉取。
+     *
+     * @param pullRequest
+     */
     private void pullMessage(final PullRequest pullRequest) {
         final MQConsumerInner consumer = this.mQClientFactory.selectConsumer(pullRequest.getConsumerGroup());
         if (consumer != null) {
@@ -86,10 +101,18 @@ public class PullMessageService extends ServiceThread {
         }
     }
 
+    /**
+     * [step 1] 从pullRequestQueue（LinkedBlockingQueue无界队列）中通过take()获取一个PullRequest消息拉取任务；
+     * 如果队列为空，则线程阻塞，等待新的PullRequest被放入恢复运行。
+     * [step 2] 执行pullMessage方法进行真正的消息拉取操作。
+     */
     @Override
     public void run() {
         log.info(this.getServiceName() + " service started");
 
+        // 这个写法是一种通用的设计技巧，stopped是一个声明为volatile的boolean类型变量，保证多线程下的可见性；
+        // 每次执行逻辑时判断stopped是否为false，如果是则执行循环体内逻辑。
+        // 其他线程能够通过设置stopped为true，导致此处判断结果为false从而终止拉取线程的运行。
         while (!this.isStopped()) {
             try {
                 PullRequest pullRequest = this.pullRequestQueue.take();
