@@ -321,11 +321,11 @@ public class MQClientAPIImpl {
         } else {
 
             // 如果消息是非批量发送
-            // 设置消息发送命令为RequestCode.SEND_MESSAGE
+            // 设置消息发送命令为 RequestCode.SEND_MESSAGE
             request = RemotingCommand.createRequestCommand(RequestCode.SEND_MESSAGE, requestHeader);
         }
 
-        // 设置发送请求body为消息的msgBody
+        // 设置发送请求 body 为消息的 msgBody
         request.setBody(msg.getBody());
 
         switch (communicationMode) {
@@ -345,8 +345,7 @@ public class MQClientAPIImpl {
                 if (timeoutMillis < costTimeAsync) {
                     throw new RemotingTooMuchRequestException("sendMessage call timeout");
                 }
-                this.sendMessageAsync(addr, brokerName, msg, timeoutMillis - costTimeAsync, request, sendCallback, topicPublishInfo, instance,
-                    retryTimesWhenSendFailed, times, context, producer);
+                this.sendMessageAsync(addr, brokerName, msg, timeoutMillis - costTimeAsync, request, sendCallback, topicPublishInfo, instance, retryTimesWhenSendFailed, times, context, producer);
                 return null;
 
             // 如果是同步发送，调用同步发送

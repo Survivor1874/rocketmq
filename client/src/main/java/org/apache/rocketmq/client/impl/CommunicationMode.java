@@ -16,8 +16,24 @@
  */
 package org.apache.rocketmq.client.impl;
 
+
+/**
+ * 消息发送模式
+ */
 public enum CommunicationMode {
+
+    /**
+     * 同步
+     */
     SYNC,
+
+    /**
+     * 异步
+     */
     ASYNC,
+
+    /**
+     * ONEWAY
+     */
     ONEWAY,
 }

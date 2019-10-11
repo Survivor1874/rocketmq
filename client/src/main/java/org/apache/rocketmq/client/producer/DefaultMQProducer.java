@@ -167,8 +167,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
                 AsyncTraceDispatcher dispatcher = new AsyncTraceDispatcher(customizedTraceTopic, rpcHook);
                 dispatcher.setHostProducer(this.getDefaultMQProducerImpl());
                 traceDispatcher = dispatcher;
-                this.getDefaultMQProducerImpl().registerSendMessageHook(
-                        new SendMessageTraceHookImpl(traceDispatcher));
+                this.getDefaultMQProducerImpl().registerSendMessageHook(new SendMessageTraceHookImpl(traceDispatcher));
             } catch (Throwable e) {
                 log.error("system mqtrace hook init failed ,maybe can't send msg trace data");
             }
@@ -298,8 +297,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * @throws InterruptedException if the sending thread is interrupted.
      */
     @Override
-    public SendResult send(Message msg,
-                           long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+    public SendResult send(Message msg, long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.defaultMQProducerImpl.send(msg, timeout);
     }
 
@@ -695,8 +693,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     }
 
     @Override
-    public SendResult send(
-            Collection<Message> msgs) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+    public SendResult send(Collection<Message> msgs) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.defaultMQProducerImpl.send(batch(msgs));
     }
 

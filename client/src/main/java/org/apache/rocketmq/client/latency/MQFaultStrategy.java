@@ -68,7 +68,7 @@ public class MQFaultStrategy {
         if (this.sendLatencyFaultEnable) {
             try {
 
-                // 本次需要发送的队列的index 就是SendWhichQueue自增得到的
+                // 本次需要发送的队列的 index 就是 SendWhichQueue 自增得到的
                 int index = tpInfo.getSendWhichQueue().getAndIncrement();
                 for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
 
