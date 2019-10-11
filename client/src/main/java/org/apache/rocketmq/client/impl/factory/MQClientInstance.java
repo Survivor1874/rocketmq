@@ -222,10 +222,20 @@ public class MQClientInstance {
         return mqList;
     }
 
+
+    /**
+     * 由于生产者和消息者实例均使用同一个 MQClientInstance,
+     * 因此会在 MQClientInstance 中同时对生产者线程、消费拉取线程、rebalance线程进行启动操作。
+     *
+     * @throws MQClientException
+     */
     public void start() throws MQClientException {
 
+        // 同步当前实例
         synchronized (this) {
             switch (this.serviceState) {
+
+                // MQClientInstance状态为[刚创建]，进行启动操作
                 case CREATE_JUST:
                     this.serviceState = ServiceState.START_FAILED;
                     // If not specified,looking address from name server
@@ -240,13 +250,19 @@ public class MQClientInstance {
                     // Start pull service
                     // 启动消息拉取线程
                     this.pullMessageService.start();
+
                     // Start rebalance service
+                    // 启动消息重负载线程
                     this.rebalanceService.start();
+
                     // Start push service
+                    // 启动生产者
                     this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
                     log.info("the client factory [{}] start OK", this.clientId);
                     this.serviceState = ServiceState.RUNNING;
                     break;
+
+                // 如果当前服务的状态为RUNNING运行中则不重复启动
                 case RUNNING:
                     break;
                 case SHUTDOWN_ALREADY:

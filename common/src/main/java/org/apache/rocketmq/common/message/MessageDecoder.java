@@ -41,21 +41,21 @@ public class MessageDecoder {
     public final static int MESSAGE_MAGIC_CODE = -626843481;
     public static final char NAME_VALUE_SEPARATOR = 1;
     public static final char PROPERTY_SEPARATOR = 2;
-    public static final int PHY_POS_POSITION =  4 + 4 + 4 + 4 + 4 + 8;
+    public static final int PHY_POS_POSITION = 4 + 4 + 4 + 4 + 4 + 8;
     public static final int BODY_SIZE_POSITION = 4 // 1 TOTALSIZE
-        + 4 // 2 MAGICCODE
-        + 4 // 3 BODYCRC
-        + 4 // 4 QUEUEID
-        + 4 // 5 FLAG
-        + 8 // 6 QUEUEOFFSET
-        + 8 // 7 PHYSICALOFFSET
-        + 4 // 8 SYSFLAG
-        + 8 // 9 BORNTIMESTAMP
-        + 8 // 10 BORNHOST
-        + 8 // 11 STORETIMESTAMP
-        + 8 // 12 STOREHOSTADDRESS
-        + 4 // 13 RECONSUMETIMES
-        + 8; // 14 Prepared Transaction Offset
+            + 4 // 2 MAGICCODE
+            + 4 // 3 BODYCRC
+            + 4 // 4 QUEUEID
+            + 4 // 5 FLAG
+            + 8 // 6 QUEUEOFFSET
+            + 8 // 7 PHYSICALOFFSET
+            + 4 // 8 SYSFLAG
+            + 8 // 9 BORNTIMESTAMP
+            + 8 // 10 BORNHOST
+            + 8 // 11 STORETIMESTAMP
+            + 8 // 12 STOREHOSTADDRESS
+            + 4 // 13 RECONSUMETIMES
+            + 8; // 14 Prepared Transaction Offset
 
     public static String createMessageId(final ByteBuffer input, final ByteBuffer addr, final long offset) {
         input.flip();
@@ -150,23 +150,23 @@ public class MessageDecoder {
             byteBuffer = ByteBuffer.allocate(storeSize);
         } else {
             storeSize = 4 // 1 TOTALSIZE
-                + 4 // 2 MAGICCODE
-                + 4 // 3 BODYCRC
-                + 4 // 4 QUEUEID
-                + 4 // 5 FLAG
-                + 8 // 6 QUEUEOFFSET
-                + 8 // 7 PHYSICALOFFSET
-                + 4 // 8 SYSFLAG
-                + 8 // 9 BORNTIMESTAMP
-                + 8 // 10 BORNHOST
-                + 8 // 11 STORETIMESTAMP
-                + 8 // 12 STOREHOSTADDRESS
-                + 4 // 13 RECONSUMETIMES
-                + 8 // 14 Prepared Transaction Offset
-                + 4 + bodyLength // 14 BODY
-                + 1 + topicLen // 15 TOPIC
-                + 2 + propertiesLength // 16 propertiesLength
-                + 0;
+                    + 4 // 2 MAGICCODE
+                    + 4 // 3 BODYCRC
+                    + 4 // 4 QUEUEID
+                    + 4 // 5 FLAG
+                    + 8 // 6 QUEUEOFFSET
+                    + 8 // 7 PHYSICALOFFSET
+                    + 4 // 8 SYSFLAG
+                    + 8 // 9 BORNTIMESTAMP
+                    + 8 // 10 BORNHOST
+                    + 8 // 11 STORETIMESTAMP
+                    + 8 // 12 STOREHOSTADDRESS
+                    + 4 // 13 RECONSUMETIMES
+                    + 8 // 14 Prepared Transaction Offset
+                    + 4 + bodyLength // 14 BODY
+                    + 1 + topicLen // 15 TOPIC
+                    + 2 + propertiesLength // 16 propertiesLength
+                    + 0;
             byteBuffer = ByteBuffer.allocate(storeSize);
         }
         // 1 TOTALSIZE
@@ -240,12 +240,12 @@ public class MessageDecoder {
     }
 
     public static MessageExt decode(
-        java.nio.ByteBuffer byteBuffer, final boolean readBody, final boolean deCompressBody) {
+            java.nio.ByteBuffer byteBuffer, final boolean readBody, final boolean deCompressBody) {
         return decode(byteBuffer, readBody, deCompressBody, false);
     }
 
     public static MessageExt decode(
-        java.nio.ByteBuffer byteBuffer, final boolean readBody, final boolean deCompressBody, final boolean isClient) {
+            java.nio.ByteBuffer byteBuffer, final boolean readBody, final boolean deCompressBody, final boolean isClient) {
         try {
 
             MessageExt msgExt;
@@ -412,6 +412,21 @@ public class MessageDecoder {
         return map;
     }
 
+    /**
+     * 这里其实就是将消息按照RocektMQ的消息协议进行编码，格式为：
+     * 消息总长度          ---  4字节
+     * 魔数                --- 4字节
+     * bodyCRC校验码       --- 4字节
+     * flag标识            --- 4字节
+     * body长度            --- 4字节
+     * 消息体              --- 消息体实际长度N字节
+     * 属性长度            --- 2字节
+     * 扩展属性            --- N字节
+     * 通过encodeMessage方法处理之后，消息便会被编码为固定格式，最终会被Broker端进行处理并持久化。
+     *
+     * @param message
+     * @return
+     */
     public static byte[] encodeMessage(Message message) {
         //only need flag, body, properties
         byte[] body = message.getBody();
@@ -422,11 +437,11 @@ public class MessageDecoder {
         short propertiesLength = (short) propertiesBytes.length;
         int sysFlag = message.getFlag();
         int storeSize = 4 // 1 TOTALSIZE
-            + 4 // 2 MAGICCOD
-            + 4 // 3 BODYCRC
-            + 4 // 4 FLAG
-            + 4 + bodyLen // 4 BODY
-            + 2 + propertiesLength;
+                + 4 // 2 MAGICCOD
+                + 4 // 3 BODYCRC
+                + 4 // 4 FLAG
+                + 4 + bodyLen // 4 BODY
+                + 2 + propertiesLength;
         ByteBuffer byteBuffer = ByteBuffer.allocate(storeSize);
         // 1 TOTALSIZE
         byteBuffer.putInt(storeSize);
@@ -488,16 +503,26 @@ public class MessageDecoder {
         List<byte[]> encodedMessages = new ArrayList<byte[]>(messages.size());
         int allSize = 0;
         for (Message message : messages) {
+
+            // 遍历messages集合，分别对每个Message实体进行编码操作，转换为byte[]
             byte[] tmp = encodeMessage(message);
+
+            // 将转换后的单个Message的byte[]设置到encodedMessages中
             encodedMessages.add(tmp);
+
+            // 批量消息的二进制数据长度随实际消息体递增
             allSize += tmp.length;
         }
         byte[] allBytes = new byte[allSize];
         int pos = 0;
         for (byte[] bytes : encodedMessages) {
+
+            // 遍历encodedMessages，按序复制每个Message的二进制格式消息体
             System.arraycopy(bytes, 0, allBytes, pos, bytes.length);
             pos += bytes.length;
         }
+
+        // 返回批量消息整体的消息体二进制数组
         return allBytes;
     }
 

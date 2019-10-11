@@ -541,10 +541,17 @@ public class NettyRemotingClient extends NettyRemotingAbstract implements Remoti
     @Override
     public void invokeOneway(String addr, RemotingCommand request, long timeoutMillis) throws InterruptedException,
         RemotingConnectException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
+
+        // 根据broker地址创建NIO的通信channel
         final Channel channel = this.getAndCreateChannel(addr);
         if (channel != null && channel.isActive()) {
             try {
+
+                // 执行发送前置钩子方法
                 doBeforeRpcHooks(addr, request);
+
+                // 执行真实的网络调用，不关心发送结果
+                // OneWay发送方式执行完网络通信之后不关注返回结果，因此适用于对返回值不敏感的流程中，比如日志上报、埋点上报等业务中。
                 this.invokeOnewayImpl(channel, request, timeoutMillis);
             } catch (RemotingSendRequestException e) {
                 log.warn("invokeOneway: send request exception, so close the channel[{}]", addr);

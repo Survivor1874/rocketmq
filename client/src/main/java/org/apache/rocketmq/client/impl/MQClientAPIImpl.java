@@ -310,19 +310,35 @@ public class MQClientAPIImpl {
     ) throws RemotingException, MQBrokerException, InterruptedException {
         long beginStartTime = System.currentTimeMillis();
         RemotingCommand request = null;
+
+        // 如果消息是sendSmartMsg（org.apache.rocketmq.client.sendSmartMsg==true）
+        // 或者是批量消息
         if (sendSmartMsg || msg instanceof MessageBatch) {
+
+            // 更换发送请求头
             SendMessageRequestHeaderV2 requestHeaderV2 = SendMessageRequestHeaderV2.createSendMessageRequestHeaderV2(requestHeader);
             request = RemotingCommand.createRequestCommand(msg instanceof MessageBatch ? RequestCode.SEND_BATCH_MESSAGE : RequestCode.SEND_MESSAGE_V2, requestHeaderV2);
         } else {
+
+            // 如果消息是非批量发送
+            // 设置消息发送命令为RequestCode.SEND_MESSAGE
             request = RemotingCommand.createRequestCommand(RequestCode.SEND_MESSAGE, requestHeader);
         }
 
+        // 设置发送请求body为消息的msgBody
         request.setBody(msg.getBody());
 
         switch (communicationMode) {
+
+            // 如果是ONEWAY方式，发出去不关心结果
             case ONEWAY:
+
+                // invokeOneWay的真实逻辑在NettyRemotingClient.java中实现，
+                // NettyRemotingClient封装了底层的网络交互
                 this.remotingClient.invokeOneway(addr, request, timeoutMillis);
                 return null;
+
+            // 如果是异步方式，判断是否发送超时
             case ASYNC:
                 final AtomicInteger times = new AtomicInteger();
                 long costTimeAsync = System.currentTimeMillis() - beginStartTime;
@@ -332,6 +348,8 @@ public class MQClientAPIImpl {
                 this.sendMessageAsync(addr, brokerName, msg, timeoutMillis - costTimeAsync, request, sendCallback, topicPublishInfo, instance,
                     retryTimesWhenSendFailed, times, context, producer);
                 return null;
+
+            // 如果是同步发送，调用同步发送
             case SYNC:
                 long costTimeSync = System.currentTimeMillis() - beginStartTime;
                 if (timeoutMillis < costTimeSync) {
@@ -353,11 +371,41 @@ public class MQClientAPIImpl {
         final long timeoutMillis,
         final RemotingCommand request
     ) throws RemotingException, MQBrokerException, InterruptedException {
+
+        // 0.执行同步发送逻辑
         RemotingCommand response = this.remotingClient.invokeSync(addr, request, timeoutMillis);
+
+        // 1.校验返回参 断言
         assert response != null;
+
+        // 2.处理发送结果
         return this.processSendResponse(brokerName, msg, response);
     }
 
+    /**
+     * 首先判断接口参数中是否存在sendCallback；
+     *   如果有且非空，则在取得发送结果sendResult之后回调sendCallback的onSuccess方法，以便发送方对发送结果做进一步的处理
+     *   如果sendCallback不存在，则直接解析发送结果，按照同步发送方式进行处理
+     *   最后，如果存在发送上下文context，则执行发送后钩子方法
+     *
+     * 对于存在sendCallback，但发送异常的情况，回调sendCallback的onException方法进行异常处理。
+     * 对于异常的broker节点进行更新操作
+     *
+     * @param addr
+     * @param brokerName
+     * @param msg
+     * @param timeoutMillis
+     * @param request
+     * @param sendCallback
+     * @param topicPublishInfo
+     * @param instance
+     * @param retryTimesWhenSendFailed
+     * @param times
+     * @param context
+     * @param producer
+     * @throws InterruptedException
+     * @throws RemotingException
+     */
     private void sendMessageAsync(
         final String addr,
         final String brokerName,
@@ -372,14 +420,22 @@ public class MQClientAPIImpl {
         final SendMessageContext context,
         final DefaultMQProducerImpl producer
     ) throws InterruptedException, RemotingException {
+
+        // 异步方式调用发送逻辑
         this.remotingClient.invokeAsync(addr, request, timeoutMillis, new InvokeCallback() {
             @Override
             public void operationComplete(ResponseFuture responseFuture) {
                 RemotingCommand response = responseFuture.getResponseCommand();
+
+                // 如果业务发送方没有实现sendCallback，但是有接口调用返回值response
                 if (null == sendCallback && response != null) {
 
                     try {
+
+                        // 发送返回值sendResult为processSendResponse处理得到的
                         SendResult sendResult = MQClientAPIImpl.this.processSendResponse(brokerName, msg, response);
+
+                        // 刷新消息发送上下文，执行发送后钩子方法
                         if (context != null && sendResult != null) {
                             context.setSendResult(sendResult);
                             context.getProducer().executeSendMessageHookAfter(context);
@@ -387,19 +443,26 @@ public class MQClientAPIImpl {
                     } catch (Throwable e) {
                     }
 
+                    // 更新故障broker
                     producer.updateFaultItem(brokerName, System.currentTimeMillis() - responseFuture.getBeginTimestamp(), false);
                     return;
                 }
 
+                // 对于实现了sendCallback的发送端
                 if (response != null) {
                     try {
+
+                        // 获取sendResult
                         SendResult sendResult = MQClientAPIImpl.this.processSendResponse(brokerName, msg, response);
                         assert sendResult != null;
+
+                        // 执行发送后钩子方法
                         if (context != null) {
                             context.setSendResult(sendResult);
                             context.getProducer().executeSendMessageHookAfter(context);
                         }
 
+                        // 回调发送成功回调方法onSuccess
                         try {
                             sendCallback.onSuccess(sendResult);
                         } catch (Throwable e) {
@@ -408,6 +471,9 @@ public class MQClientAPIImpl {
                         producer.updateFaultItem(brokerName, System.currentTimeMillis() - responseFuture.getBeginTimestamp(), false);
                     } catch (Exception e) {
                         producer.updateFaultItem(brokerName, System.currentTimeMillis() - responseFuture.getBeginTimestamp(), true);
+
+                        // 对于处理异常的情况，传入sendCallback，回调其发送
+                        // 失败回调方法onException(e)
                         onExceptionImpl(brokerName, msg, 0L, request, sendCallback, topicPublishInfo, instance,
                             retryTimesWhenSendFailed, times, e, context, false, producer);
                     }
@@ -499,6 +565,8 @@ public class MQClientAPIImpl {
             case ResponseCode.FLUSH_SLAVE_TIMEOUT:
             case ResponseCode.SLAVE_NOT_AVAILABLE: {
             }
+
+            // 如果发送消息返回ResponseCode.SUCCESS，则设置SendStatus为SEND_OK
             case ResponseCode.SUCCESS: {
                 SendStatus sendStatus = SendStatus.SEND_OK;
                 switch (response.getCode()) {
@@ -525,6 +593,8 @@ public class MQClientAPIImpl {
                 MessageQueue messageQueue = new MessageQueue(msg.getTopic(), brokerName, responseHeader.getQueueId());
 
                 String uniqMsgId = MessageClientIDSetter.getUniqID(msg);
+
+                // 如果是批量消息，逗号拼接uniqMsgId
                 if (msg instanceof MessageBatch) {
                     StringBuilder sb = new StringBuilder();
                     for (Message message : (MessageBatch) msg) {
@@ -532,6 +602,8 @@ public class MQClientAPIImpl {
                     }
                     uniqMsgId = sb.toString();
                 }
+
+                // 组装SendResult，填充属性并返回SendResult
                 SendResult sendResult = new SendResult(sendStatus,
                     uniqMsgId,
                     responseHeader.getMsgId(), messageQueue, responseHeader.getQueueOffset());

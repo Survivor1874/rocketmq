@@ -245,7 +245,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
     @Override
     public void submitConsumeRequest(
 
-            // 消息列表 默认一次从服务端拉取最多32条消息
+            // 消息列表 默认一次从服务端拉取最多 32 条消息
             final List<MessageExt> msgs,
 
             // 消息处理队列
@@ -257,11 +257,11 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             // 是否转发到消费线程池 并发消费时忽略该参数
             final boolean dispatchToConsume) {
 
-        // 获取批量消费数量，这个值为 ConsumeMessageBatchMaxSize，默认为1
+        // 获取批量消费数量，这个值为 ConsumeMessageBatchMaxSize，默认为 1
         final int consumeBatchSize = this.defaultMQPushConsumer.getConsumeMessageBatchMaxSize();
 
         // 如果消息的大小小于等于 consumeBatchSize，组装消费请求，提交到消费线程池中进行消费操作。
-        //如果异常则稍后再次提交消费请求，通过方法 submitConsumeRequestLater 实现。
+        // 如果异常则稍后再次提交消费请求，通过方法 submitConsumeRequestLater 实现。
         if (msgs.size() <= consumeBatchSize) {
 
             // 拉取的消息小于等于consumeBatchSize（默认为1）
@@ -434,6 +434,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
     /**
      * 这个方法中调用了 submitConsumeRequest 进行了消息消费处理。
      * 这样我们的消费流程就完美的闭环了。
+     *
      * @param msgs
      * @param processQueue
      * @param messageQueue

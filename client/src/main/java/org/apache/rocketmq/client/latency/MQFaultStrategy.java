@@ -55,15 +55,30 @@ public class MQFaultStrategy {
         this.sendLatencyFaultEnable = sendLatencyFaultEnable;
     }
 
+    /**
+     * 这段代码的核心就是进行队列的选取，选取的过程中伴随着故障检测，对于故障broker能够做到尽可能规避。
+     *
+     * @param tpInfo
+     * @param lastBrokerName
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
+
+        // 如果启用了broker故障延迟机制
         if (this.sendLatencyFaultEnable) {
             try {
+
+                // 本次需要发送的队列的index 就是SendWhichQueue自增得到的
                 int index = tpInfo.getSendWhichQueue().getAndIncrement();
                 for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
+
+                    // index与当前路由表中的对列总个数取模
                     int pos = Math.abs(index++) % tpInfo.getMessageQueueList().size();
                     if (pos < 0) {
                         pos = 0;
                     }
+
+                    // 获取到当前对应的待发送队列
                     MessageQueue mq = tpInfo.getMessageQueueList().get(pos);
                     if (latencyFaultTolerance.isAvailable(mq.getBrokerName())) {
                         if (null == lastBrokerName || mq.getBrokerName().equals(lastBrokerName)) {
@@ -72,8 +87,14 @@ public class MQFaultStrategy {
                     }
                 }
 
+
+                // 至少选择一个broker
                 final String notBestBroker = latencyFaultTolerance.pickOneAtLeast();
+
+                // 获取broker中的可写队列数
                 int writeQueueNums = tpInfo.getQueueIdByBroker(notBestBroker);
+
+                // 如果可写队列数>0,则选取一个队列
                 if (writeQueueNums > 0) {
                     final MessageQueue mq = tpInfo.selectOneMessageQueue();
                     if (notBestBroker != null) {
@@ -82,6 +103,8 @@ public class MQFaultStrategy {
                     }
                     return mq;
                 } else {
+
+                    // 可写队列数 <= 0 移除该broker
                     latencyFaultTolerance.remove(notBestBroker);
                 }
             } catch (Exception e) {

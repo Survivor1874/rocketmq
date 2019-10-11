@@ -550,22 +550,39 @@ public class CommitLog {
         final int tranType = MessageSysFlag.getTransactionValue(msg.getSysFlag());
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE
             || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
+
             // Delay Delivery
+            // 处理延时级别
             if (msg.getDelayTimeLevel() > 0) {
                 if (msg.getDelayTimeLevel() > this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel()) {
                     msg.setDelayTimeLevel(this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel());
                 }
 
+                // 更换Topic
                 topic = ScheduleMessageService.SCHEDULE_TOPIC;
+
+                // 队列ID为延迟级别-1
                 queueId = ScheduleMessageService.delayLevel2QueueId(msg.getDelayTimeLevel());
 
                 // Backup real topic, queueId
+                // 同时为了保证消息可被找到，也会将原先的 topic 存储到 properties 中, 这里将原先的 topic 和队列 id 做了备份。
                 MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_TOPIC, msg.getTopic());
                 MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_QUEUE_ID, String.valueOf(msg.getQueueId()));
                 msg.setPropertiesString(MessageDecoder.messageProperties2String(msg.getProperties()));
 
+                // 重置 topic 及 queueId
                 msg.setTopic(topic);
                 msg.setQueueId(queueId);
+
+                // 可以看到，如果是重试消息，在进行延时级别判断时候，返回true，则进入分支逻辑，
+                // 通过这段逻辑我们可以知道，对于重试的消息，rocketMQ 并不会从原队列中获取消息，
+                // 而是创建了一个新的Topic进行消息存储的。也就是代码中的 SCHEDULE_TOPIC
+
+                // 结论 ：对于所有消费者消费失败的消息，rocketMQ都会把重试的消息
+                // 重新new出来（即上文提到的 MessageExtBrokerInner 对象），
+                // 然后投递到主题 SCHEDULE_TOPIC_XXXX 下的队列中，然后由定时任务进行调度重试
+                // 而重试的周期 ： MessageStoreConfig.java
+                // private String messageDelayLevel = "1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h";
             }
         }
 

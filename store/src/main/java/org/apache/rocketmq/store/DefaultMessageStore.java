@@ -335,6 +335,7 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    @Override
     public void destroy() {
         this.destroyLogics();
         this.commitLog.destroy();
@@ -351,6 +352,7 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
         if (this.shutdown) {
             log.warn("message store has shutdown, so putMessage is forbidden");
@@ -392,6 +394,8 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         long beginTime = this.getSystemClock().now();
+
+        // 通过 commitLog 我们可以认为这里是真实刷盘操作，也就是消息被持久化了。
         PutMessageResult result = this.commitLog.putMessage(msg);
 
         long eclipseTime = this.getSystemClock().now() - beginTime;
@@ -407,6 +411,7 @@ public class DefaultMessageStore implements MessageStore {
         return result;
     }
 
+    @Override
     public PutMessageResult putMessages(MessageExtBatch messageExtBatch) {
         if (this.shutdown) {
             log.warn("DefaultMessageStore has shutdown, so putMessages is forbidden");

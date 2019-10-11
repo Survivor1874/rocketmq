@@ -92,14 +92,20 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     @Override
     public boolean rejectRequest() {
         return this.brokerController.getMessageStore().isOSPageCacheBusy() ||
-            this.brokerController.getMessageStore().isTransientStorePoolDeficient();
+                this.brokerController.getMessageStore().isTransientStorePoolDeficient();
     }
 
-    private RemotingCommand consumerSendMsgBack(final ChannelHandlerContext ctx, final RemotingCommand request)
-        throws RemotingCommandException {
+    /**
+     * 当消息消费失败，服务端会发起消费重试
+     *
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
+    private RemotingCommand consumerSendMsgBack(final ChannelHandlerContext ctx, final RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-        final ConsumerSendMsgBackRequestHeader requestHeader =
-            (ConsumerSendMsgBackRequestHeader)request.decodeCommandCustomHeader(ConsumerSendMsgBackRequestHeader.class);
+        final ConsumerSendMsgBackRequestHeader requestHeader = (ConsumerSendMsgBackRequestHeader) request.decodeCommandCustomHeader(ConsumerSendMsgBackRequestHeader.class);
 
         if (this.hasConsumeMessageHook() && !UtilAll.isBlank(requestHeader.getOriginMsgId())) {
 
@@ -114,11 +120,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         SubscriptionGroupConfig subscriptionGroupConfig =
-            this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(requestHeader.getGroup());
+                this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(requestHeader.getGroup());
         if (null == subscriptionGroupConfig) {
             response.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
             response.setRemark("subscription group not exist, " + requestHeader.getGroup() + " "
-                + FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST));
+                    + FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST));
             return response;
         }
 
@@ -143,9 +149,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         TopicConfig topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(
-            newTopic,
-            subscriptionGroupConfig.getRetryQueueNums(),
-            PermName.PERM_WRITE | PermName.PERM_READ, topicSysFlag);
+                newTopic,
+                subscriptionGroupConfig.getRetryQueueNums(),
+                PermName.PERM_WRITE | PermName.PERM_READ, topicSysFlag);
         if (null == topicConfig) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("topic[" + newTopic + "] not exist");
@@ -178,21 +184,37 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             maxReconsumeTimes = requestHeader.getMaxReconsumeTimes();
         }
 
-        if (msgExt.getReconsumeTimes() >= maxReconsumeTimes
-            || delayLevel < 0) {
+        // 我们总结一下死信的处理逻辑：
+
+        // 首先判断消息当前重试次数是否大于等于16，或者消息延迟级别是否小于0
+        // 只要满足上述的任意一个条件，设置新的topic（死信topic）为：%DLQ% + consumerGroup
+        // 进行前置属性的添加
+        // 将死信消息投递到上述步骤2建立的死信topic对应的死信队列中并落盘，使消息持久化。
+        // 判断消息当前重试次数是否大于等于最大重试次数(16)，如果达到最大重试次数，或者配置的重试级别小于0，
+        // 则获取死信队列的 Topic，后续将超时的消息 send 到死信队列中。
+        if (msgExt.getReconsumeTimes() >= maxReconsumeTimes || delayLevel < 0) {
+
+            // 1. 如果满足判断条件，设置死信队列 topic= %DLQ% + consumerGroup
             newTopic = MixAll.getDLQTopic(requestHeader.getGroup());
             queueIdInt = Math.abs(this.random.nextInt() % 99999999) % DLQ_NUMS_PER_GROUP;
 
             topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(newTopic,
-                DLQ_NUMS_PER_GROUP,
-                PermName.PERM_WRITE, 0
+                    DLQ_NUMS_PER_GROUP,
+                    PermName.PERM_WRITE, 0
             );
             if (null == topicConfig) {
                 response.setCode(ResponseCode.SYSTEM_ERROR);
                 response.setRemark("topic[" + newTopic + "] not exist");
                 return response;
             }
+
+            // 正常的消息会进入else分支，对于首次重试的消息，默认的 delayLevel 是 0，
+            // rocketMQ 会将给该 level + 3，也就是加到 3，
+            // 这就是说，如果没有显式的配置延时级别，消息消费重试首次，
+            // 是延迟了第三个级别发起的重试，从表格中看也就是距离首次发送 10s 后重试。
         } else {
+
+            // 如果延迟级别为0，则设置下一次延迟级别为3+当前重试消费次数，达到时间衰减效果
             if (0 == delayLevel) {
                 delayLevel = 3 + msgExt.getReconsumeTimes();
             }
@@ -200,6 +222,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             msgExt.setDelayTimeLevel(delayLevel);
         }
 
+
+        // MessageExtBrokerInner，也就是对重试的消息，
+        // rocketMQ 会创建一个新的 MessageExtBrokerInner 对象，它实际上是继承了 MessageExt。
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setTopic(newTopic);
         msgInner.setBody(msgExt.getBody());
@@ -213,11 +238,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setBornTimestamp(msgExt.getBornTimestamp());
         msgInner.setBornHost(msgExt.getBornHost());
         msgInner.setStoreHost(this.getStoreHost());
+
+        // 当延时级别设置完成，刷新消息的重试次数为当前次数加1，broker 将该消息刷盘
         msgInner.setReconsumeTimes(msgExt.getReconsumeTimes() + 1);
 
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
         MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
 
+        // 3.死信消息投递到死信队列中并落盘
         PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
         if (putMessageResult != null) {
             switch (putMessageResult.getPutMessageStatus()) {
@@ -255,11 +283,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         if (null != newTopic && newTopic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
             String groupName = newTopic.substring(MixAll.RETRY_GROUP_TOPIC_PREFIX.length());
             SubscriptionGroupConfig subscriptionGroupConfig =
-                this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(groupName);
+                    this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(groupName);
             if (null == subscriptionGroupConfig) {
                 response.setCode(ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST);
                 response.setRemark(
-                    "subscription group not exist, " + groupName + " " + FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST));
+                        "subscription group not exist, " + groupName + " " + FAQUrl.suggestTodo(FAQUrl.SUBSCRIPTION_GROUP_NOT_EXIST));
                 return false;
             }
 
@@ -272,8 +300,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 newTopic = MixAll.getDLQTopic(groupName);
                 int queueIdInt = Math.abs(this.random.nextInt() % 99999999) % DLQ_NUMS_PER_GROUP;
                 topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(newTopic,
-                    DLQ_NUMS_PER_GROUP,
-                    PermName.PERM_WRITE, 0
+                        DLQ_NUMS_PER_GROUP,
+                        PermName.PERM_WRITE, 0
                 );
                 msg.setTopic(newTopic);
                 msg.setQueueId(queueIdInt);
@@ -298,7 +326,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                                         final SendMessageRequestHeader requestHeader) throws RemotingCommandException {
 
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
-        final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader)response.readCustomHeader();
+        final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
 
         response.setOpaque(request.getOpaque());
 
@@ -352,8 +380,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             if (this.brokerController.getBrokerConfig().isRejectTransactionMessage()) {
                 response.setCode(ResponseCode.NO_PERMISSION);
                 response.setRemark(
-                    "the broker[" + this.brokerController.getBrokerConfig().getBrokerIP1()
-                        + "] sending transaction message is forbidden");
+                        "the broker[" + this.brokerController.getBrokerConfig().getBrokerIP1()
+                                + "] sending transaction message is forbidden");
                 return response;
             }
             putMessageResult = this.brokerController.getTransactionalMessageService().prepareMessage(msgInner);
@@ -404,12 +432,12 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             case PROPERTIES_SIZE_EXCEEDED:
                 response.setCode(ResponseCode.MESSAGE_ILLEGAL);
                 response.setRemark(
-                    "the message is illegal, maybe msg body or properties length not matched. msg body length limit 128k, msg properties length limit 32k.");
+                        "the message is illegal, maybe msg body or properties length not matched. msg body length limit 128k, msg properties length limit 32k.");
                 break;
             case SERVICE_NOT_AVAILABLE:
                 response.setCode(ResponseCode.SERVICE_NOT_AVAILABLE);
                 response.setRemark(
-                    "service not available now, maybe disk full, " + diskUtil() + ", maybe your broker machine memory too small.");
+                        "service not available now, maybe disk full, " + diskUtil() + ", maybe your broker machine memory too small.");
                 break;
             case OS_PAGECACHE_BUSY:
                 response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -430,7 +458,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
             this.brokerController.getBrokerStatsManager().incTopicPutNums(msg.getTopic(), putMessageResult.getAppendMessageResult().getMsgNum(), 1);
             this.brokerController.getBrokerStatsManager().incTopicPutSize(msg.getTopic(),
-                putMessageResult.getAppendMessageResult().getWroteBytes());
+                    putMessageResult.getAppendMessageResult().getWroteBytes());
             this.brokerController.getBrokerStatsManager().incBrokerPutNums(putMessageResult.getAppendMessageResult().getMsgNum());
 
             response.setRemark(null);
@@ -448,7 +476,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
                 int commercialBaseCount = brokerController.getBrokerConfig().getCommercialBaseCount();
                 int wroteSize = putMessageResult.getAppendMessageResult().getWroteBytes();
-                int incValue = (int)Math.ceil(wroteSize / BrokerStatsManager.SIZE_PER_COUNT) * commercialBaseCount;
+                int incValue = (int) Math.ceil(wroteSize / BrokerStatsManager.SIZE_PER_COUNT) * commercialBaseCount;
 
                 sendMessageContext.setCommercialSendStats(BrokerStatsManager.StatsType.SEND_SUCCESS);
                 sendMessageContext.setCommercialSendTimes(incValue);
@@ -459,7 +487,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         } else {
             if (hasSendMessageHook()) {
                 int wroteSize = request.getBody().length;
-                int incValue = (int)Math.ceil(wroteSize / BrokerStatsManager.SIZE_PER_COUNT);
+                int incValue = (int) Math.ceil(wroteSize / BrokerStatsManager.SIZE_PER_COUNT);
 
                 sendMessageContext.setCommercialSendStats(BrokerStatsManager.StatsType.SEND_FAILURE);
                 sendMessageContext.setCommercialSendTimes(incValue);
@@ -476,7 +504,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                                              final SendMessageRequestHeader requestHeader) throws RemotingCommandException {
 
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
-        final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader)response.readCustomHeader();
+        final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
 
         response.setOpaque(request.getOpaque());
 
@@ -564,11 +592,11 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathPhysic);
 
         String storePathLogis =
-            StorePathConfigHelper.getStorePathConsumeQueue(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
+                StorePathConfigHelper.getStorePathConsumeQueue(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
         double logisRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathLogis);
 
         String storePathIndex =
-            StorePathConfigHelper.getStorePathIndex(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
+                StorePathConfigHelper.getStorePathIndex(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
         double indexRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathIndex);
 
         return String.format("CL: %5.2f CQ: %5.2f INDEX: %5.2f", physicRatio, logisRatio, indexRatio);
