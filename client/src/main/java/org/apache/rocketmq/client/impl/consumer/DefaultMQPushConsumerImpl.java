@@ -112,7 +112,11 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     private long queueMaxSpanFlowControlTimes = 0;
 
     public DefaultMQPushConsumerImpl(DefaultMQPushConsumer defaultMQPushConsumer, RPCHook rpcHook) {
+
+        // 初始化 DefaultMQPushConsumerImpl，将 defaultMQPushConsumer 的实际引用传入
         this.defaultMQPushConsumer = defaultMQPushConsumer;
+
+        // 传入rpcHook并指向本类的引用
         this.rpcHook = rpcHook;
     }
 
@@ -198,6 +202,27 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         this.offsetStore = offsetStore;
     }
 
+    /**
+     * RocektMQ并没有使用推模式或者拉模式，而是使用了结合两者优点的长轮询机制，
+     * 它本质上还是拉模式，但服务端能够通过hold住请求的方式减少客户端对服务端的频繁访问，从而提高资源利用率及消息响应实时性。
+     * 这种策略在服务端开发的其他方向如：IM等领域都有广泛的实践，因此了解它的原理是有必要的。
+     *
+     * 推模式：当服务端有数据立即通知客户端，这个策略依赖服务端与客户端之间的长连接，它具有高实时性、客户端开发简单等优点；
+     *      同时缺点也很明显，比如：服务端需要感知与它建立链接的客户端，要实现客户端节点的发现，服务端本身主动推送，
+     *      需要服务端对消息做额外的处理，以便能够及时将消息分发给客户端。
+     *
+     * 拉模式：客户端主动对服务端的数据进行拉取。客户端拉取数据，拉取成功后处理数据，处理完成再次进行拉取，循环执行。
+     *      缺点是如果不能很好的设置拉取的频率，时间间隔，过多的空轮询会对服务端造成较大的访问压力，数据的实时性也不能得到很好的保证。
+     *
+     *
+     * 长轮询机制，顾名思义，它不同于常规轮询方式。常规的轮询方式为客户端发起请求，服务端接收后该请求后立即进行相应的方式。
+     *
+     * 长轮询本质上仍旧是轮询，它与轮询不同之处在于，当服务端接收到客户端的请求后，
+     * 服务端不会立即将数据返回给客户端，而是会先将这个请求hold住，判断服务器端数据是否有更新。
+     * 如果有更新，则对客户端进行响应，如果一直没有数据，
+     * 则它会在长轮询超时时间之前一直hold住请求并检测是否有数据更新，直到有数据或者超时后才返回。
+     * @param pullRequest
+     */
     public void pullMessage(final PullRequest pullRequest) {
         final ProcessQueue processQueue = pullRequest.getProcessQueue();
 
@@ -208,7 +233,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             return;
         }
 
-        // 如果 processQueue 未被丢弃，则更新 LastPullTimestamp 属性未当前时间戳。
+        // 如果 processQueue 未被丢弃，则更新 LastPullTimestamp 属性为当前时间戳。
         pullRequest.getProcessQueue().setLastPullTimestamp(System.currentTimeMillis());
 
         // 判断当前线程状态是否为运行态，makeSureStateOK() 方法会通过

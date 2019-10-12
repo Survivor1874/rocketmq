@@ -102,17 +102,17 @@ public class PullMessageService extends ServiceThread {
     }
 
     /**
-     * [step 1] 从pullRequestQueue（LinkedBlockingQueue无界队列）中通过take()获取一个PullRequest消息拉取任务；
-     * 如果队列为空，则线程阻塞，等待新的PullRequest被放入恢复运行。
-     * [step 2] 执行pullMessage方法进行真正的消息拉取操作。
+     * [step 1] 从 pullRequestQueue（LinkedBlockingQueue无界队列）中通过take() 获取一个 PullRequest 消息拉取任务；
+     * 如果队列为空，则线程阻塞，等待新的 PullRequest 被放入恢复运行。
+     * [step 2] 执行 pullMessage 方法进行真正的消息拉取操作。
      */
     @Override
     public void run() {
         log.info(this.getServiceName() + " service started");
 
-        // 这个写法是一种通用的设计技巧，stopped是一个声明为volatile的boolean类型变量，保证多线程下的可见性；
-        // 每次执行逻辑时判断stopped是否为false，如果是则执行循环体内逻辑。
-        // 其他线程能够通过设置stopped为true，导致此处判断结果为false从而终止拉取线程的运行。
+        // 这个写法是一种通用的设计技巧，stopped 是一个声明为 volatile 的 boolean 类型变量，保证多线程下的可见性；
+        // 每次执行逻辑时判断 stopped 是否为 false，如果是则执行循环体内逻辑。
+        // 其他线程能够通过设置 stopped 为 true，导致此处判断结果为 false 从而终止拉取线程的运行。
         while (!this.isStopped()) {
             try {
                 PullRequest pullRequest = this.pullRequestQueue.take();

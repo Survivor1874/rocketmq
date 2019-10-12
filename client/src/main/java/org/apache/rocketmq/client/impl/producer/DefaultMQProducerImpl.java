@@ -746,7 +746,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             try {
 
                 //for MessageBatch,ID has been set in the generating process
-                // 接着对消息进行前置处理，为消息分配全局唯一Id，对于批量消息，它的全局唯一id是单独生成的
+                // 接着对消息进行前置处理，为消息分配全局唯一 Id，对于批量消息，它的全局唯一id是单独生成的
                 if (!(msg instanceof MessageBatch)) {
                     MessageClientIDSetter.setUniqID(msg);
                 }
@@ -800,7 +800,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         context.setMsgType(MessageType.Trans_Msg_Half);
                     }
 
-                    // 如果是延时消息，则标记消息类型为延时消息Delay_Msg
+                    // 如果是延时消息，则标记消息类型为延时消息 Delay_Msg
                     if (msg.getProperty("__STARTDELIVERTIME") != null || msg.getProperty(MessageConst.PROPERTY_DELAY_TIME_LEVEL) != null) {
                         context.setMsgType(MessageType.Delay_Msg);
                     }

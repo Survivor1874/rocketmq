@@ -213,7 +213,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             // 是延迟了第三个级别发起的重试，从表格中看也就是距离首次发送 10s 后重试。
         } else {
 
-            // 如果延迟级别为0，则设置下一次延迟级别为3+当前重试消费次数，达到时间衰减效果
+            // 如果延迟级别为 0，则设置下一次延迟级别为 3 + 当前重试消费次数，达到时间衰减效果
             if (0 == delayLevel) {
                 delayLevel = 3 + msgExt.getReconsumeTimes();
             }
@@ -238,7 +238,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setBornHost(msgExt.getBornHost());
         msgInner.setStoreHost(this.getStoreHost());
 
-        // 当延时级别设置完成，刷新消息的重试次数为当前次数加1，broker 将该消息刷盘
+        // 当延时级别设置完成，刷新消息的重试次数为当前次数加 1，broker 将该消息刷盘
         msgInner.setReconsumeTimes(msgExt.getReconsumeTimes() + 1);
 
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
